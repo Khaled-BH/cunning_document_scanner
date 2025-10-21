@@ -11,6 +11,17 @@ Cunning Document Scanner is a Flutter-based document scanner application that en
 - Limit the number of scannable files on Android.
 - Allows selection of images from the gallery on Android.
 
+### iOS 26+ Advanced Features
+
+- **Liquid Glass UI Integration**: Fully compatible with iOS 26's new translucent Liquid Glass design system
+- **RecognizeDocumentsRequest API**: Advanced document processing with Vision framework
+- **Table Detection**: Automatic detection and extraction of table structures (rows, columns, cells)
+- **Multi-language Support**: Text recognition in 26 languages
+- **Data Detection**: Automatic extraction of emails, phone numbers, URLs, dates, and addresses
+- **List Recognition**: Automatic detection and extraction of list structures
+- **Structured Metadata**: JSON export of all detected document structure and data
+- **Bug Fixes**: Workarounds for iOS 26 VNDocumentCameraViewController UI issues (gray bar, invisible buttons)
+
 A state of the art document scanner with automatic cropping function.
 
 <img src="https://user-images.githubusercontent.com/1488063/167291601-c64db2d5-78ab-4781-bc7a-afe7eb93e083.png" height ="400"  alt=""/>
@@ -38,14 +49,25 @@ android {
 }
 ```
 
-### **IOS**
+### **iOS**
 #### Minimum Version Configuration
 Ensure you meet the minimum version requirements to run the application on iOS devices.
+
+**Basic Compatibility (iOS 13+):**
 In the `ios/Podfile` file, make sure the iOS platform version is at least 13.0:
 
 ```ruby
 platform :ios, '13.0'
 ```
+
+**iOS 26+ Advanced Features:**
+To use iOS 26 advanced features (RecognizeDocumentsRequest, Liquid Glass UI), update to:
+
+```ruby
+platform :ios, '26.0'
+```
+
+Note: The plugin is backward compatible. iOS 26 features will automatically activate when running on iOS 26+ devices, while maintaining full compatibility with iOS 13-25.
 #### Permission Configuration
 1. Add a String property to the app's Info.plist file with the key [NSCameraUsageDescription](https://developer.apple.com/documentation/bundleresources/information_property_list/nscamerausagedescription) and the value as the description for why your app needs camera access.
 
@@ -102,10 +124,12 @@ There are some features in Android that allow you to adjust the scanner that wil
 
 ### iOS Specific
 
-On iOS it is possible to configure which image format should be used to save of the document scans. Available options are PNG (default) or JPEG. In certain situations the JPEG format could drastically reduce the file size of the final scan. If you choose to use JPEG you can also specify a compression quality, where 0.0 is highest compression (lowest quality) and 1.0 (default) is the lowest compression (highest quality). Example usage is:
+On iOS it is possible to configure which image format should be used to save of the document scans. Available options are PNG (default) or JPEG. In certain situations the JPEG format could drastically reduce the file size of the final scan. If you choose to use JPEG you can also specify a compression quality, where 0.0 is highest compression (lowest quality) and 1.0 (default) is the lowest compression (highest quality).
+
+#### Basic Usage (iOS 13+)
 
 ```dart
-   // Returns images in JPEG format with a compression quality of 50%. 
+   // Returns images in JPEG format with a compression quality of 50%.
    final imagesPath = await CunningDocumentScanner.getPictures(
       iosScannerOptions: IosScannerOptions(
          imageFormat: IosImageFormat.jpg,
@@ -113,6 +137,83 @@ On iOS it is possible to configure which image format should be used to save of 
       ),
    );
 ```
+
+#### iOS 26+ Advanced Features
+
+Enable iOS 26's RecognizeDocumentsRequest API for advanced document processing:
+
+```dart
+// Enable iOS 26 advanced features
+final imagesPath = await CunningDocumentScanner.getPictures(
+   iosScannerOptions: IosScannerOptions(
+      imageFormat: IosImageFormat.jpg,
+      jpgCompressionQuality: 0.8,
+      // Enable iOS 26 RecognizeDocumentsRequest
+      useRecognizeDocumentsRequest: true,
+      // Support multiple languages (26 languages available)
+      recognitionLanguages: ['en-US', 'es-ES', 'fr-FR', 'de-DE'],
+      // Enable advanced detection features
+      enableTableDetection: true,
+      enableListDetection: true,
+      enableDataDetection: true,
+   ),
+);
+```
+
+#### Get Structured Metadata (iOS 26+)
+
+Access detected tables, data, and document structure:
+
+```dart
+// Get images with metadata
+final result = await CunningDocumentScanner.getPicturesWithMetadata(
+   iosScannerOptions: IosScannerOptions(
+      useRecognizeDocumentsRequest: true,
+      recognitionLanguages: ['en-US'],
+   ),
+);
+
+if (result != null) {
+   final images = result['images'] as List<String>;
+   final metadata = result['metadata'] as List<Map<String, dynamic>>;
+
+   // Access detected tables
+   for (var meta in metadata) {
+      print('Language: ${meta['language']}');
+      print('Full text: ${meta['transcript']}');
+
+      // Access detected tables
+      final tables = meta['tables'] as List;
+      for (var table in tables) {
+         print('Table: ${table['rowCount']}x${table['columnCount']}');
+      }
+
+      // Access detected data (emails, phones, URLs)
+      final detectedData = meta['detectedData'] as List;
+      for (var data in detectedData) {
+         print('${data['type']}: ${data['text']}');
+      }
+   }
+}
+```
+
+#### Supported Languages (iOS 26+)
+
+The RecognizeDocumentsRequest API supports 26 languages:
+- English (en-US), Spanish (es-ES), French (fr-FR), German (de-DE)
+- Chinese Simplified (zh-CN), Chinese Traditional (zh-TW)
+- Japanese (ja-JP), Korean (ko-KR)
+- Portuguese (pt-BR), Russian (ru-RU), Arabic (ar-SA)
+- Hindi (hi-IN), Italian (it-IT), Dutch (nl-NL)
+- And 12 more languages...
+
+#### Liquid Glass UI Compatibility
+
+iOS 26's Liquid Glass design is automatically applied to the document scanner interface. The plugin includes workarounds for known iOS 26 VNDocumentCameraViewController bugs:
+- Fixed gray bar appearing beneath status bar
+- Fixed invisible buttons due to Liquid Glass transparency
+- Enhanced button contrast for better visibility
+- Proper translucent material rendering
 
 ## Installation
 
