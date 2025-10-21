@@ -28,6 +28,19 @@ A state of the art document scanner with automatic cropping function.
 <img src="https://user-images.githubusercontent.com/1488063/167291821-3b66d0bb-b636-4911-a572-d2368dc95012.jpeg" height ="400"  alt=""/>
 <img src="https://user-images.githubusercontent.com/1488063/167291827-fa0ae804-1b81-4ef4-8607-3b212c3ab1c0.jpeg" height ="400"  alt=""/>
 
+## ⚠️ IMPORTANT: iOS 13.0+ Required
+
+**This plugin requires iOS 13.0 or newer.** If you get camera-related compilation errors like:
+- `builtinultrawidecamera is only available in iOS 13 or newer`
+- `builtindualwidecamera is only available in iOS 13 or newer`
+
+See **[CAMERA_COMPATIBILITY_FIX.md](CAMERA_COMPATIBILITY_FIX.md)** for the complete fix guide.
+
+**Quick Fix:**
+1. Edit `ios/Podfile`: Set `platform :ios, '13.0'`
+2. Run `cd ios && pod install && cd ..`
+3. Run `flutter clean && flutter run`
+
 ## Project Setup
 Follow the steps below to set up your Flutter project on Android and iOS.
 
