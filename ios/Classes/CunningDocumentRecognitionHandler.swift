@@ -2,7 +2,7 @@
 //  CunningDocumentRecognitionHandler.swift
 //  cunning_document_scanner
 //
-//  Created for iOS 26 RecognizeDocumentsRequest integration
+//  Created for advanced document processing with Vision framework
 //
 
 import Foundation
@@ -10,9 +10,9 @@ import Vision
 import VisionKit
 import UIKit
 
-/// iOS 26+ Document Recognition Handler using RecognizeDocumentsRequest API
-/// Provides advanced document processing with table detection, structure recognition, and 26-language support
-@available(iOS 26.0, *)
+/// Document Recognition Handler using Vision framework
+/// Provides advanced document processing with text recognition and structure detection
+@available(iOS 13.0, *)
 class CunningDocumentRecognitionHandler {
 
     enum RecognitionError: Error {
@@ -72,7 +72,7 @@ class CunningDocumentRecognitionHandler {
         case unknown
     }
 
-    /// Process a scanned document image using RecognizeDocumentsRequest
+    /// Process a scanned document image using Vision framework
     /// - Parameters:
     ///   - image: The UIImage to process
     ///   - languages: Array of language codes to use for recognition (default: ["en-US"])
@@ -82,10 +82,14 @@ class CunningDocumentRecognitionHandler {
             throw RecognitionError.imageConversionFailed
         }
 
-        // Create RecognizeDocumentsRequest
-        let request = VNRecognizeDocumentsRequest()
+        // Create VNRecognizeTextRequest (available in iOS 13+)
+        let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
-        request.recognitionLanguages = languages
+
+        // Set languages (iOS 16+)
+        if #available(iOS 16.0, *) {
+            request.recognitionLanguages = languages
+        }
         request.usesLanguageCorrection = true
 
         // Create request handler
@@ -99,27 +103,29 @@ class CunningDocumentRecognitionHandler {
             throw RecognitionError.noObservations
         }
 
-        guard let documentObservation = observations.first else {
-            throw RecognitionError.noDocument
+        // Extract full text transcript
+        var fullText = ""
+
+        for observation in observations {
+            if let topCandidate = observation.topCandidates(1).first {
+                fullText += topCandidate.string + "\n"
+            }
         }
 
-        // Extract full text transcript
-        let transcript = documentObservation.transcript
+        // Extract tables (basic implementation using text positioning)
+        let tables = extractTables(from: observations)
 
-        // Extract tables
-        let tables = extractTables(from: documentObservation)
-
-        // Extract lists
-        let lists = extractLists(from: documentObservation)
+        // Extract lists (basic implementation)
+        let lists = extractLists(from: observations)
 
         // Extract detected data
-        let detectedData = extractDetectedData(from: documentObservation)
+        let detectedData = extractDetectedData(from: observations)
 
-        // Get primary language
-        let language = documentObservation.recognizedLanguages.first
+        // Detect primary language
+        let language = languages.first ?? "en-US"
 
         return DocumentMetadata(
-            transcript: transcript,
+            transcript: fullText.trimmingCharacters(in: .whitespacesAndNewlines),
             tables: tables,
             lists: lists,
             detectedData: detectedData,
@@ -127,97 +133,119 @@ class CunningDocumentRecognitionHandler {
         )
     }
 
-    /// Extract table data from document observation
-    private func extractTables(from observation: VNRecognizedDocumentObservation) -> [TableData] {
+    /// Extract table data from text observations (basic implementation)
+    /// Uses spatial analysis to detect table-like structures
+    private func extractTables(from observations: [VNRecognizedTextObservation]) -> [TableData] {
         var tables: [TableData] = []
 
-        for table in observation.tables {
-            var cells: [[CellData]] = []
+        // Group observations by vertical position (rows)
+        let sortedByY = observations.sorted { $0.boundingBox.origin.y > $1.boundingBox.origin.y }
 
-            // Group cells by rows
-            for row in table.rows {
-                var rowCells: [CellData] = []
-                for (columnIndex, cell) in row.enumerated() {
-                    let cellText = cell.transcript
-                    let detectedData = extractDetectedDataFromText(cell)
+        // Detect if text is aligned in grid pattern
+        if sortedByY.count >= 6 { // Minimum for a simple table
+            let tolerance: CGFloat = 0.05
+            var rows: [[VNRecognizedTextObservation]] = []
+            var currentRow: [VNRecognizedTextObservation] = []
+            var lastY: CGFloat = -1
 
-                    let cellData = CellData(
-                        text: cellText,
-                        rowIndex: cells.count,
-                        columnIndex: columnIndex,
-                        detectedData: detectedData
-                    )
-                    rowCells.append(cellData)
+            for obs in sortedByY {
+                let currentY = obs.boundingBox.origin.y
+                if lastY < 0 || abs(currentY - lastY) < tolerance {
+                    currentRow.append(obs)
+                } else {
+                    if !currentRow.isEmpty {
+                        rows.append(currentRow)
+                    }
+                    currentRow = [obs]
                 }
-                cells.append(rowCells)
+                lastY = currentY
             }
 
-            let tableData = TableData(
-                rowCount: cells.count,
-                columnCount: cells.first?.count ?? 0,
-                cells: cells
-            )
-            tables.append(tableData)
+            if !currentRow.isEmpty {
+                rows.append(currentRow)
+            }
+
+            // If we have multiple rows with similar column counts, it might be a table
+            if rows.count >= 2 {
+                let columnCounts = rows.map { $0.count }
+                let avgColumns = columnCounts.reduce(0, +) / columnCounts.count
+
+                if avgColumns >= 2 {
+                    var cells: [[CellData]] = []
+
+                    for (rowIndex, row) in rows.enumerated() {
+                        var rowCells: [CellData] = []
+                        let sortedRow = row.sorted { $0.boundingBox.origin.x < $1.boundingBox.origin.x }
+
+                        for (colIndex, obs) in sortedRow.enumerated() {
+                            if let text = obs.topCandidates(1).first?.string {
+                                let cellData = CellData(
+                                    text: text,
+                                    rowIndex: rowIndex,
+                                    columnIndex: colIndex,
+                                    detectedData: []
+                                )
+                                rowCells.append(cellData)
+                            }
+                        }
+                        cells.append(rowCells)
+                    }
+
+                    if !cells.isEmpty {
+                        tables.append(TableData(
+                            rowCount: cells.count,
+                            columnCount: cells.first?.count ?? 0,
+                            cells: cells
+                        ))
+                    }
+                }
+            }
         }
 
         return tables
     }
 
-    /// Extract list data from document observation
-    private func extractLists(from observation: VNRecognizedDocumentObservation) -> [ListData] {
+    /// Extract list data from text observations (basic implementation)
+    private func extractLists(from observations: [VNRecognizedTextObservation]) -> [ListData] {
         var lists: [ListData] = []
+        var items: [ListItemData] = []
 
-        for list in observation.lists {
-            var items: [ListItemData] = []
+        // Detect list items (lines starting with bullets, numbers, etc.)
+        let listPattern = "^[•\\-\\*\\d+\\.]\\s+"
 
-            for item in list.items {
-                let itemData = ListItemData(
-                    text: item.transcript,
-                    level: 0  // iOS 26 provides hierarchical level information
-                )
-                items.append(itemData)
+        for obs in observations {
+            if let text = obs.topCandidates(1).first?.string {
+                if text.range(of: listPattern, options: .regularExpression) != nil {
+                    items.append(ListItemData(text: text, level: 0))
+                }
             }
+        }
 
+        if !items.isEmpty {
             lists.append(ListData(items: items))
         }
 
         return lists
     }
 
-    /// Extract detected data from document observation
-    private func extractDetectedData(from observation: VNRecognizedDocumentObservation) -> [DetectedDataItem] {
+    /// Extract detected data from text observations
+    private func extractDetectedData(from observations: [VNRecognizedTextObservation]) -> [DetectedDataItem] {
         var allDetectedData: [DetectedDataItem] = []
 
-        // Iterate through all recognized text to find detected data
-        for textBlock in observation.recognizedText {
-            let detectedData = extractDetectedDataFromText(textBlock)
-            allDetectedData.append(contentsOf: detectedData)
-        }
-
-        return allDetectedData
-    }
-
-    /// Extract detected data from a text observation
-    private func extractDetectedDataFromText(_ textObservation: VNRecognizedText) -> [DetectedDataItem] {
-        var detectedItems: [DetectedDataItem] = []
-
-        // iOS 26 provides automatic detection of data types
-        for candidate in textObservation.topCandidates(10) {
-            // Note: In actual iOS 26, detectedData property would be available
-            // This is a placeholder for the actual API
-            let text = candidate.string
-
-            // Basic pattern matching as fallback
-            if isEmail(text) {
-                detectedItems.append(DetectedDataItem(text: text, type: .emailAddress))
-            } else if isPhoneNumber(text) {
-                detectedItems.append(DetectedDataItem(text: text, type: .phoneNumber))
-            } else if isURL(text) {
-                detectedItems.append(DetectedDataItem(text: text, type: .url))
+        for obs in observations {
+            if let text = obs.topCandidates(1).first?.string {
+                // Pattern matching for common data types
+                if isEmail(text) {
+                    allDetectedData.append(DetectedDataItem(text: text, type: .emailAddress))
+                } else if isPhoneNumber(text) {
+                    allDetectedData.append(DetectedDataItem(text: text, type: .phoneNumber))
+                } else if isURL(text) {
+                    allDetectedData.append(DetectedDataItem(text: text, type: .url))
+                }
             }
         }
 
-        return detectedItems
+        return allDetectedData
     }
 
     // MARK: - Pattern Matching Helpers

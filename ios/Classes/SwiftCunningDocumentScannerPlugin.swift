@@ -9,8 +9,7 @@ public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocum
   var presentingController: VNDocumentCameraViewController?
   var scannerOptions: CunningScannerOptions = CunningScannerOptions()
 
-  // iOS 26 recognition handler
-  @available(iOS 26.0, *)
+  // Document recognition handler (iOS 13+)
   private lazy var recognitionHandler = CunningDocumentRecognitionHandler()
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -28,9 +27,9 @@ public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocum
                 self.presentingController = VNDocumentCameraViewController()
                 self.presentingController!.delegate = self
 
-                // iOS 26: Apply Liquid Glass UI workarounds for known bugs
-                if #available(iOS 26.0, *) {
-                    applyiOS26UIFixes()
+                // Apply UI improvements for modern iOS versions
+                if #available(iOS 15.0, *) {
+                    applyModernUIFixes()
                 }
 
                 presentedVC?.present(self.presentingController!, animated: true)
@@ -43,35 +42,32 @@ public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocum
         }
   }
 
-  /// Apply iOS 26 UI fixes for VNDocumentCameraViewController bugs
-  /// Addresses gray bar issue and invisible button problems
-  @available(iOS 26.0, *)
-  private func applyiOS26UIFixes() {
+  /// Apply modern UI improvements for VNDocumentCameraViewController
+  /// Ensures proper appearance and button visibility
+  @available(iOS 15.0, *)
+  private func applyModernUIFixes() {
     guard let controller = presentingController else { return }
 
-    // Fix 1: Force proper navigation bar appearance to fix gray bar
+    // Configure navigation bar appearance for better visibility
     let appearance = UINavigationBarAppearance()
     appearance.configureWithDefaultBackground()
 
-    // Apply translucent Liquid Glass style but with proper contrast
-    appearance.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.8)
+    // Apply modern translucent style with proper contrast
+    appearance.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
     appearance.backgroundEffect = UIBlurEffect(style: .systemMaterial)
 
-    // Ensure buttons are visible with proper tint
+    // Ensure buttons are visible with proper styling
     appearance.buttonAppearance.normal.titleTextAttributes = [
         .foregroundColor: UIColor.label
     ]
 
-    controller.navigationController?.navigationBar.standardAppearance = appearance
-    controller.navigationController?.navigationBar.scrollEdgeAppearance = appearance
-    controller.navigationController?.navigationBar.compactAppearance = appearance
-
-    // Fix 2: Ensure buttons have proper contrast for Liquid Glass
-    controller.navigationController?.navigationBar.tintColor = UIColor.label
-
-    // Fix 3: Force redraw to apply changes
-    controller.view.setNeedsLayout()
-    controller.view.layoutIfNeeded()
+    // Apply appearance to navigation controller if available
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak controller] in
+        controller?.navigationController?.navigationBar.standardAppearance = appearance
+        controller?.navigationController?.navigationBar.scrollEdgeAppearance = appearance
+        controller?.navigationController?.navigationBar.compactAppearance = appearance
+        controller?.navigationController?.navigationBar.tintColor = UIColor.systemBlue
+    }
   }
 
 
@@ -106,8 +102,8 @@ public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocum
 
             filenames.append(url.path)
 
-            // iOS 26: Process with RecognizeDocumentsRequest if enabled
-            if #available(iOS 26.0, *), scannerOptions.useRecognizeDocumentsRequest {
+            // Process with advanced recognition if enabled
+            if scannerOptions.useRecognizeDocumentsRequest {
                 Task {
                     do {
                         let metadata = try await recognitionHandler.processDocument(
@@ -123,25 +119,31 @@ public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocum
                             metadataList.append(metadataJSON)
                         }
                     } catch {
-                        print("iOS 26 Document Recognition failed: \(error.localizedDescription)")
+                        logError("Document Recognition failed", error: error)
                         // Continue processing even if recognition fails
                     }
                 }
             }
         }
 
-        // Return results with metadata if iOS 26 features are enabled
-        if #available(iOS 26.0, *), scannerOptions.useRecognizeDocumentsRequest {
-            let result: [String: Any] = [
-                "images": filenames,
-                "metadata": metadataList
-            ]
-            resultChannel?(result)
+        // Wait a moment for async processing to complete if needed
+        if scannerOptions.useRecognizeDocumentsRequest {
+            // Small delay to allow metadata processing
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self = self else { return }
+
+                // Return results with metadata if advanced features are enabled
+                let result: [String: Any] = [
+                    "images": filenames,
+                    "metadata": metadataList
+                ]
+                self.resultChannel?(result)
+                self.presentingController?.dismiss(animated: true)
+            }
         } else {
             resultChannel?(filenames)
+            presentingController?.dismiss(animated: true)
         }
-
-        presentingController?.dismiss(animated: true)
     }
 
     public func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
